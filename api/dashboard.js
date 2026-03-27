@@ -7,63 +7,76 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const CLIENT_ID = "WU4bVxk5Df0g5JC8ULzW77Ry7OM10Lyj";
-  const TRACK_URL = "https://soundcloud.com/arekkuzzera/psycho-dreams-hardstyle-remix";
+  const CLIENT_ID = process.env.SOUNDCLOUD_CLIENT_ID;
+  const USER_URL = "https://soundcloud.com/arekkuzzera";
 
   try {
-    const url = `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(TRACK_URL)}&client_id=${CLIENT_ID}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    // 1) resolve user
+    const userRes = await fetch(
+      `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(USER_URL)}&client_id=${CLIENT_ID}`
+    );
+    const userData = await userRes.json();
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: data?.error || "SoundCloud request failed"
+    if (!userRes.ok) {
+      return res.status(userRes.status).json({
+        error: userData?.error || "Failed to resolve user"
       });
     }
 
-    const total = data.playback_count ?? 0;
+    const userId = userData.id || userData.urn;
+    if (!userId) {
+      return res.status(500).json({ error: "User id not found" });
+    }
+
+    // 2) get user tracks
+    const tracksRes = await fetch(
+      `https://api-v2.soundcloud.com/users/${userId}/tracks?client_id=${CLIENT_ID}&limit=200`
+    );
+    const tracksData = await tracksRes.json();
+
+    if (!tracksRes.ok) {
+      return res.status(tracksRes.status).json({
+        error: tracksData?.error || "Failed to fetch tracks"
+      });
+    }
+
+    const tracks = Array.isArray(tracksData.collection)
+      ? tracksData.collection
+      : Array.isArray(tracksData)
+      ? tracksData
+      : [];
+
+    const totals = tracks.reduce(
+      (acc, track) => {
+        acc.playback_count += Number(track.playback_count || 0);
+        acc.likes += Number(track.likes_count || 0);
+        acc.comments += Number(track.comment_count || 0);
+        acc.reposts += Number(track.reposts_count || 0);
+        acc.downloads += Number(track.download_count || 0);
+        return acc;
+      },
+      {
+        playback_count: 0,
+        likes: 0,
+        comments: 0,
+        reposts: 0,
+        downloads: 0
+      }
+    );
 
     return res.status(200).json({
-      sinceYear: 2016,
-      trackTitle: data.title ?? "",
-      playback_count: total,
-      likes: data.likes_count ?? Math.round(total * 0.0108),
-      comments: data.comment_count ?? Math.round(total * 0.00021),
-      reposts: data.reposts_count ?? Math.round(total * 0.00022),
-      downloads: data.download_count ?? 1,
-      history: {
-        yearly: [
-          { label: "2016", plays: 0 },
-          { label: "2017", plays: 0 },
-          { label: "2018", plays: 0 },
-          { label: "2019", plays: 0 },
-          { label: "2020", plays: 0 },
-          { label: "2021", plays: 0 },
-          { label: "2022", plays: 0 },
-          { label: "2023", plays: 140000 },
-          { label: "2024", plays: 560000 },
-          { label: "2025", plays: 890000 },
-          { label: "2026", plays: 110000 }
-        ],
-        monthly: [
-          { label: "Jan", plays: 12000 },
-          { label: "Feb", plays: 17000 },
-          { label: "Mar", plays: 22000 },
-          { label: "Apr", plays: 28000 },
-          { label: "May", plays: 31000 },
-          { label: "Jun", plays: 26000 },
-          { label: "Jul", plays: 34000 },
-          { label: "Aug", plays: 41000 },
-          { label: "Sep", plays: 52000 },
-          { label: "Oct", plays: 68000 },
-          { label: "Nov", plays: 74000 },
-          { label: "Dec", plays: 91000 }
-        ],
-        daily: Array.from({ length: 14 }, (_, i) => ({
-          label: String(i + 1),
-          plays: 2000 + i * 180
-        }))
-      },
+      artist: userData.username || "Unknown artist",
+      trackCount: tracks.length,
+      ...totals,
+      tracks: tracks.map((t) => ({
+        title: t.title,
+        playback_count: Number(t.playback_count || 0),
+        likes_count: Number(t.likes_count || 0),
+        comment_count: Number(t.comment_count || 0),
+        reposts_count: Number(t.reposts_count || 0),
+        download_count: Number(t.download_count || 0),
+        permalink_url: t.permalink_url || null
+      })),
       updatedAt: new Date().toISOString()
     });
   } catch (error) {
