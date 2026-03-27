@@ -3,19 +3,24 @@ export default async function handler(req, res) {
   const TRACK_URL = "https://soundcloud.com/arekkuzzera/psycho-dreams-hardstyle-remix";
 
   try {
-    const url =
-      `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(TRACK_URL)}&client_id=${CLIENT_ID}`;
+    const url = `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(TRACK_URL)}&client_id=${CLIENT_ID}`;
 
     const response = await fetch(url);
     const data = await response.json();
 
-    return res.status(200).json({
-      playback_count: data.playback_count ?? null
-    });
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: data?.error || "SoundCloud request failed"
+      });
+    }
 
+    return res.status(200).json({
+      playback_count: data.playback_count ?? null,
+      title: data.title ?? null
+    });
   } catch (error) {
     return res.status(500).json({
-      error: error.message
+      error: error.message || "Internal server error"
     });
   }
 }

@@ -1,7 +1,0 @@
-{
-  "functions": {
-    "api/plays.js": {
-      "runtime": "@vercel/node@3"
-    }
-  }
-}
