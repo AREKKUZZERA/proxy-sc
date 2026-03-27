@@ -10,6 +10,34 @@ export default async function handler(req, res) {
   const CLIENT_ID = "WU4bVxk5Df0g5JC8ULzW77Ry7OM10Lyj";
   const USER_URL = "https://soundcloud.com/arekkuzzera";
 
+  const YEARLY_TOTALS = [
+    { label: "2016", total: 0 },
+    { label: "2017", total: 0 },
+    { label: "2018", total: 0 },
+    { label: "2019", total: 0 },
+    { label: "2020", total: 0 },
+    { label: "2021", total: 0 },
+    { label: "2022", total: 0 },
+    { label: "2023", total: 150000 },
+    { label: "2024", total: 710000 },
+    { label: "2025", total: 1620000 },
+    { label: "2026", total: 1735576 }
+  ];
+
+  function cumulativeToGrowth(items) {
+    return items.map((item, index) => {
+      if (index === 0) {
+        return { label: item.label, plays: item.total };
+      }
+
+      const prev = items[index - 1].total;
+      return {
+        label: item.label,
+        plays: Math.max(item.total - prev, 0)
+      };
+    });
+  }
+
   const MANUAL_ADJUSTMENTS = {
     totals: {
       playback_count: 271858,
@@ -20,19 +48,7 @@ export default async function handler(req, res) {
     },
 
     history: {
-      yearly: [
-        { label: "2016", plays: 0 },
-        { label: "2017", plays: 0 },
-        { label: "2018", plays: 0 },
-        { label: "2019", plays: 0 },
-        { label: "2020", plays: 0 },
-        { label: "2021", plays: 0 },
-        { label: "2022", plays: 0 },
-        { label: "2023", plays: 150000 },
-        { label: "2024", plays: 560000 },
-        { label: "2025", plays: 910000 },
-        { label: "2026", plays: 115564 }
-      ],
+      yearly: cumulativeToGrowth(YEARLY_TOTALS),
       monthly: [
         { label: "Jan", plays: 12000 },
         { label: "Feb", plays: 17000 },
@@ -163,7 +179,8 @@ export default async function handler(req, res) {
         comment_count: Number(track?.comment_count || 0),
         reposts_count: Number(track?.reposts_count || 0),
         download_count: Number(track?.download_count || 0),
-        permalink_url: track?.permalink_url || null
+        permalink_url: track?.permalink_url || null,
+        artwork_url: track?.artwork_url || null
       }))
       .sort((a, b) => b.playback_count - a.playback_count);
 
@@ -183,7 +200,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     return res.status(500).json({
-      error: error.message || "Internal server error"
+      error: error.message || "Всему пиздец"
     });
   }
 }
