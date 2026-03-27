@@ -10,6 +10,50 @@ export default async function handler(req, res) {
   const CLIENT_ID = "WU4bVxk5Df0g5JC8ULzW77Ry7OM10Lyj";
   const USER_URL = "https://soundcloud.com/arekkuzzera";
 
+  const MANUAL_ADJUSTMENTS = {
+    totals: {
+      playback_count: 271858,
+      likes: 2759,
+      comments: 36,
+      reposts: 118,
+      downloads: 0
+    },
+
+    history: {
+      yearly: [
+        { label: "2016", plays: 0 },
+        { label: "2017", plays: 0 },
+        { label: "2018", plays: 0 },
+        { label: "2019", plays: 0 },
+        { label: "2020", plays: 0 },
+        { label: "2021", plays: 0 },
+        { label: "2022", plays: 0 },
+        { label: "2023", plays: 150000 },
+        { label: "2024", plays: 560000 },
+        { label: "2025", plays: 910000 },
+        { label: "2026", plays: 115564 }
+      ],
+      monthly: [
+        { label: "Jan", plays: 12000 },
+        { label: "Feb", plays: 17000 },
+        { label: "Mar", plays: 22000 },
+        { label: "Apr", plays: 28000 },
+        { label: "May", plays: 31000 },
+        { label: "Jun", plays: 26000 },
+        { label: "Jul", plays: 34000 },
+        { label: "Aug", plays: 41000 },
+        { label: "Sep", plays: 52000 },
+        { label: "Oct", plays: 68000 },
+        { label: "Nov", plays: 74000 },
+        { label: "Dec", plays: 91000 }
+      ],
+      daily: Array.from({ length: 14 }, (_, i) => ({
+        label: String(i + 1),
+        plays: 2000 + i * 180
+      }))
+    }
+  };
+
   async function fetchJsonSafe(url, options = {}) {
     const response = await fetch(url, {
       ...options,
@@ -103,6 +147,14 @@ export default async function handler(req, res) {
       }
     );
 
+    const finalTotals = {
+      playback_count: totals.playback_count + MANUAL_ADJUSTMENTS.totals.playback_count,
+      likes: totals.likes + MANUAL_ADJUSTMENTS.totals.likes,
+      comments: totals.comments + MANUAL_ADJUSTMENTS.totals.comments,
+      reposts: totals.reposts + MANUAL_ADJUSTMENTS.totals.reposts,
+      downloads: totals.downloads + MANUAL_ADJUSTMENTS.totals.downloads
+    };
+
     const sortedTracks = tracks
       .map((track) => ({
         title: track?.title || "Untitled",
@@ -120,44 +172,12 @@ export default async function handler(req, res) {
       trackCount: tracks.length,
       sinceYear: 2016,
       trackTitle: `${user?.username || "Artist"} — All Tracks`,
-      playback_count: totals.playback_count,
-      likes: totals.likes,
-      comments: totals.comments,
-      reposts: totals.reposts,
-      downloads: totals.downloads,
-      history: {
-        yearly: [
-          { label: "2016", plays: 0 },
-          { label: "2017", plays: 0 },
-          { label: "2018", plays: 0 },
-          { label: "2019", plays: 0 },
-          { label: "2020", plays: 0 },
-          { label: "2021", plays: 0 },
-          { label: "2022", plays: 0 },
-          { label: "2023", plays: 140000 },
-          { label: "2024", plays: 560000 },
-          { label: "2025", plays: 890000 },
-          { label: "2026", plays: 110000 }
-        ],
-        monthly: [
-          { label: "Jan", plays: 12000 },
-          { label: "Feb", plays: 17000 },
-          { label: "Mar", plays: 22000 },
-          { label: "Apr", plays: 28000 },
-          { label: "May", plays: 31000 },
-          { label: "Jun", plays: 26000 },
-          { label: "Jul", plays: 34000 },
-          { label: "Aug", plays: 41000 },
-          { label: "Sep", plays: 52000 },
-          { label: "Oct", plays: 68000 },
-          { label: "Nov", plays: 74000 },
-          { label: "Dec", plays: 91000 }
-        ],
-        daily: Array.from({ length: 14 }, (_, i) => ({
-          label: String(i + 1),
-          plays: 2000 + i * 180
-        }))
-      },
+      playback_count: finalTotals.playback_count,
+      likes: finalTotals.likes,
+      comments: finalTotals.comments,
+      reposts: finalTotals.reposts,
+      downloads: finalTotals.downloads,
+      history: MANUAL_ADJUSTMENTS.history,
       tracks: sortedTracks,
       updatedAt: new Date().toISOString()
     });
