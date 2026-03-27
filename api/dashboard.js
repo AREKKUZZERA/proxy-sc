@@ -10,10 +10,12 @@ export default async function handler(req, res) {
   const CLIENT_ID = "WU4bVxk5Df0g5JC8ULzW77Ry7OM10Lyj";
   const USER_URL = "https://soundcloud.com/arekkuzzera";
 
-  async function fetchJsonSafe(url) {
+  async function fetchJsonSafe(url, options = {}) {
     const response = await fetch(url, {
+      ...options,
       headers: {
-        Accept: "application/json"
+        Accept: "application/json",
+        ...(options.headers || {})
       }
     });
 
@@ -54,7 +56,19 @@ export default async function handler(req, res) {
     }
 
     const tracksResult = await fetchJsonSafe(
-      `https://api-v2.soundcloud.com/users/${userId}/tracks?client_id=${CLIENT_ID}&limit=200`
+      `https://api-v2.soundcloud.com/users/${userId}/tracks?client_id=${CLIENT_ID}&limit=200`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept": "application/json, text/plain, */*",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Origin": "https://soundcloud.com",
+          "Referer": "https://soundcloud.com/",
+          "Sec-Fetch-Site": "same-site",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Dest": "empty"
+        }
+      }
     );
 
     if (!tracksResult.response.ok) {
