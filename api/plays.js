@@ -12,7 +12,6 @@ export default async function handler(req, res) {
 
   try {
     const url = `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(TRACK_URL)}&client_id=${CLIENT_ID}`;
-
     const response = await fetch(url);
     const data = await response.json();
 
@@ -23,8 +22,12 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({
-      playback_count: data.playback_count ?? null,
-      title: data.title ?? null
+      playback_count: data.playback_count ?? 0,
+      title: data.title ?? "",
+      likes: data.likes_count ?? 0,
+      comment_count: data.comment_count ?? 0,
+      reposts_count: data.reposts_count ?? 0,
+      download_count: data.download_count ?? 0
     });
   } catch (error) {
     return res.status(500).json({
