@@ -188,7 +188,9 @@ function buildRequestUrl(pathOrUrl, extraQuery = {}) {
 
   for (const [key, value] of Object.entries(extraQuery)) {
     if (value !== undefined && value !== null && value !== "") {
-      url.searchParams.set(key, String(value));
+      if (!url.searchParams.has(key) || url.searchParams.get(key) !== String(value)) {
+        url.searchParams.set(key, String(value));
+      }
     }
   }
 
