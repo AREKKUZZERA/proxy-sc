@@ -157,11 +157,15 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     logError("dashboard", error);
-    const { status, payload } = toErrorResponse(error);
 
-    return sendJson(res, status, {
-      ...payload,
-      debug: error?.details || null
-    });
+    if (error?.code === "soundcloud_captcha_blocked") {
+      return sendJson(res, 503, {
+        error: "SoundCloud temporarily blocked server access with captcha",
+        code: "soundcloud_captcha_blocked"
+      });
+    }
+
+    const { status, payload } = toErrorResponse(error);
+    return sendJson(res, status, payload);
   }
 }

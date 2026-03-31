@@ -198,15 +198,23 @@ function buildRequestUrl(pathOrUrl, extraQuery = {}) {
 }
 
 function createUpstreamError(message, parsed) {
-  return new AppError(message, {
-    status: parsed.response.status || 502,
-    code: "soundcloud_upstream_error",
-    details: {
-      upstreamStatus: parsed.response.status || null,
-      upstreamUrl: parsed.url || null,
-      upstreamBody: parsed.data || parsed.text || null
+  const captchaUrl =
+    parsed?.data?.url &&
+    typeof parsed.data.url === "string" &&
+    parsed.data.url.includes("geo.captcha-delivery.com");
+
+  return new AppError(
+    captchaUrl ? "SoundCloud blocked the request with captcha" : message,
+    {
+      status: parsed.response.status || 502,
+      code: captchaUrl ? "soundcloud_captcha_blocked" : "soundcloud_upstream_error",
+      details: {
+        upstreamStatus: parsed.response.status || null,
+        upstreamUrl: parsed.url || null,
+        upstreamBody: parsed.data || parsed.text || null
+      }
     }
-  });
+  );
 }
 
 export async function soundCloudFetchJson(pathOrUrl, { query = {}, headers = {}, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
@@ -260,6 +268,16 @@ export async function fetchCollection(pathOrUrl) {
       query: {
         linked_partitioning: true,
         ...(page === 0 ? { limit: PAGE_LIMIT } : {})
+      },
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://soundcloud.com",
+        "Referer": "https://soundcloud.com/",
+        "Sec-Fetch-Site": "same-site",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty"
       }
     });
 
