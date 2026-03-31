@@ -201,7 +201,11 @@ function createUpstreamError(message, parsed) {
   return new AppError(message, {
     status: parsed.response.status || 502,
     code: "soundcloud_upstream_error",
-    details: parsed.data || parsed.text || null
+    details: {
+      upstreamStatus: parsed.response.status || null,
+      upstreamUrl: parsed.url || null,
+      upstreamBody: parsed.data || parsed.text || null
+    }
   });
 }
 

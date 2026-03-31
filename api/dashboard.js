@@ -158,6 +158,10 @@ export default async function handler(req, res) {
   } catch (error) {
     logError("dashboard", error);
     const { status, payload } = toErrorResponse(error);
-    return sendJson(res, status, payload);
+
+    return sendJson(res, status, {
+      ...payload,
+      debug: error?.details || null
+    });
   }
 }
