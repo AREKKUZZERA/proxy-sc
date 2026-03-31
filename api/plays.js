@@ -1,37 +1,60 @@
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+import {
+  applyCors,
+  enforceMethod,
+  getQueryValue,
+  handlePreflight,
+  logError,
+  resolveSoundCloudUrl,
+  sendJson,
+  setCacheHeaders,
+  toErrorResponse
+} from "./_lib/http.js";
+import { normalizeTrack, resolveResource } from "./_lib/soundcloud.js";
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
+const DEFAULT_TRACK_URL = process.env.SOUNDCLOUD_TRACK_URL?.trim() || "https://soundcloud.com/arekkuzzera/psycho-dreams-hardstyle-remix";
+
+export default async function handler(req, res) {
+  applyCors(req, res);
+
+  const preflightResult = handlePreflight(req, res);
+  if (preflightResult) {
+    return preflightResult;
   }
 
-  const CLIENT_ID = "WU4bVxk5Df0g5JC8ULzW77Ry7OM10Lyj";
-  const TRACK_URL = "https://soundcloud.com/arekkuzzera/psycho-dreams-hardstyle-remix";
+  if (!enforceMethod(req, res, ["GET"])) {
+    return null;
+  }
 
   try {
-    const url = `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(TRACK_URL)}&client_id=${CLIENT_ID}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    const requestedUrl = getQueryValue(req, "url", "track_url", "trackUrl");
+    const trackUrl = resolveSoundCloudUrl(requestedUrl, DEFAULT_TRACK_URL);
+    const { data: track, authMode } = await resolveResource(trackUrl, { expectedKinds: ["track"] });
+    const normalizedTrack = normalizeTrack(track);
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: data?.error || "SoundCloud request failed"
-      });
-    }
+    setCacheHeaders(res, {
+      browserMaxAge: 0,
+      sMaxAge: 60,
+      staleWhileRevalidate: 300
+    });
 
-    return res.status(200).json({
-      playback_count: data.playback_count ?? 0,
-      title: data.title ?? "",
-      likes: data.likes_count ?? 0,
-      comment_count: data.comment_count ?? 0,
-      reposts_count: data.reposts_count ?? 0,
-      download_count: data.download_count ?? 0
+    return sendJson(res, 200, {
+      playback_count: normalizedTrack.playback_count,
+      title: normalizedTrack.title,
+      likes: normalizedTrack.likes_count,
+      comment_count: normalizedTrack.comment_count,
+      reposts_count: normalizedTrack.reposts_count,
+      download_count: normalizedTrack.download_count,
+      permalink_url: normalizedTrack.permalink_url,
+      artwork_url: normalizedTrack.artwork_url,
+      updatedAt: new Date().toISOString(),
+      meta: {
+        requestedTrackUrl: trackUrl,
+        authMode
+      }
     });
   } catch (error) {
-    return res.status(500).json({
-      error: error.message || "Internal server error"
-    });
+    logError("plays", error);
+    const { status, payload } = toErrorResponse(error);
+    return sendJson(res, status, payload);
   }
 }

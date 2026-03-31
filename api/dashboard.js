@@ -1,192 +1,140 @@
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+import {
+  applyCors,
+  enforceMethod,
+  getQueryValue,
+  handlePreflight,
+  logError,
+  resolveSoundCloudUrl,
+  sendJson,
+  setCacheHeaders,
+  toErrorResponse
+} from "./_lib/http.js";
+import {
+  fetchCollection,
+  getApiBaseUrl,
+  normalizeTrack,
+  resolveResource,
+  sumTrackTotals
+} from "./_lib/soundcloud.js";
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+const DEFAULT_USER_URL = process.env.SOUNDCLOUD_USER_URL?.trim() || "https://soundcloud.com/arekkuzzera";
+const INCLUDE_MANUAL_ADJUSTMENTS = process.env.DASHBOARD_INCLUDE_MANUAL_ADJUSTMENTS !== "false";
 
-  const CLIENT_ID = "WU4bVxk5Df0g5JC8ULzW77Ry7OM10Lyj";
-  const USER_URL = "https://soundcloud.com/arekkuzzera";
+const YEARLY_TOTALS = [
+  { label: "2016", total: 0 },
+  { label: "2017", total: 0 },
+  { label: "2018", total: 0 },
+  { label: "2019", total: 0 },
+  { label: "2020", total: 0 },
+  { label: "2021", total: 0 },
+  { label: "2022", total: 0 },
+  { label: "2023", total: 150000 },
+  { label: "2024", total: 710000 },
+  { label: "2025", total: 1620000 },
+  { label: "2026", total: 1735576 }
+];
 
-  const YEARLY_TOTALS = [
-    { label: "2016", total: 0 },
-    { label: "2017", total: 0 },
-    { label: "2018", total: 0 },
-    { label: "2019", total: 0 },
-    { label: "2020", total: 0 },
-    { label: "2021", total: 0 },
-    { label: "2022", total: 0 },
-    { label: "2023", total: 150000 },
-    { label: "2024", total: 710000 },
-    { label: "2025", total: 1620000 },
-    { label: "2026", total: 1735576 }
-  ];
-
-  function cumulativeToGrowth(items) {
-    return items.map((item, index) => {
-      if (index === 0) {
-        return { label: item.label, plays: item.total };
-      }
-
-      const prev = items[index - 1].total;
-      return {
-        label: item.label,
-        plays: Math.max(item.total - prev, 0)
-      };
-    });
-  }
-
-  const MANUAL_ADJUSTMENTS = {
-    totals: {
-      playback_count: 271858,
-      likes: 2759,
-      comments: 36,
-      reposts: 118,
-      downloads: 0
-    },
-
-    history: {
-      yearly: cumulativeToGrowth(YEARLY_TOTALS),
-      monthly: [
-        { label: "Jan", plays: 12000 },
-        { label: "Feb", plays: 17000 },
-        { label: "Mar", plays: 22000 },
-        { label: "Apr", plays: 28000 },
-        { label: "May", plays: 31000 },
-        { label: "Jun", plays: 26000 },
-        { label: "Jul", plays: 34000 },
-        { label: "Aug", plays: 41000 },
-        { label: "Sep", plays: 52000 },
-        { label: "Oct", plays: 68000 },
-        { label: "Nov", plays: 74000 },
-        { label: "Dec", plays: 91000 }
-      ],
-      daily: Array.from({ length: 14 }, (_, i) => ({
-        label: String(i + 1),
-        plays: 2000 + i * 180
-      }))
+function cumulativeToGrowth(items) {
+  return items.map((item, index) => {
+    if (index === 0) {
+      return { label: item.label, plays: item.total };
     }
+
+    const previousTotal = items[index - 1].total;
+    return {
+      label: item.label,
+      plays: Math.max(item.total - previousTotal, 0)
+    };
+  });
+}
+
+const MANUAL_ADJUSTMENTS = {
+  totals: {
+    playback_count: 271858,
+    likes: 2759,
+    comments: 36,
+    reposts: 118,
+    downloads: 0
+  },
+  history: {
+    yearly: cumulativeToGrowth(YEARLY_TOTALS),
+    monthly: [
+      { label: "Jan", plays: 12000 },
+      { label: "Feb", plays: 17000 },
+      { label: "Mar", plays: 22000 },
+      { label: "Apr", plays: 28000 },
+      { label: "May", plays: 31000 },
+      { label: "Jun", plays: 26000 },
+      { label: "Jul", plays: 34000 },
+      { label: "Aug", plays: 41000 },
+      { label: "Sep", plays: 52000 },
+      { label: "Oct", plays: 68000 },
+      { label: "Nov", plays: 74000 },
+      { label: "Dec", plays: 91000 }
+    ],
+    daily: Array.from({ length: 14 }, (_, index) => ({
+      label: String(index + 1),
+      plays: 2000 + index * 180
+    }))
+  }
+};
+
+function addTotals(liveTotals, manualTotals) {
+  return {
+    playback_count: liveTotals.playback_count + manualTotals.playback_count,
+    likes: liveTotals.likes + manualTotals.likes,
+    comments: liveTotals.comments + manualTotals.comments,
+    reposts: liveTotals.reposts + manualTotals.reposts,
+    downloads: liveTotals.downloads + manualTotals.downloads
   };
+}
 
-  async function fetchJsonSafe(url, options = {}) {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Accept: "application/json",
-        ...(options.headers || {})
-      }
-    });
+export default async function handler(req, res) {
+  applyCors(req, res);
 
-    const text = await response.text();
+  const preflightResult = handlePreflight(req, res);
+  if (preflightResult) {
+    return preflightResult;
+  }
 
-    let data = null;
-    if (text && text.trim()) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { raw: text };
-      }
-    }
-
-    return { response, data, text };
+  if (!enforceMethod(req, res, ["GET"])) {
+    return null;
   }
 
   try {
-    const resolved = await fetchJsonSafe(
-      `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(USER_URL)}&client_id=${CLIENT_ID}`
-    );
+    const requestedUrl = getQueryValue(req, "url", "user_url", "userUrl");
+    const userUrl = resolveSoundCloudUrl(requestedUrl, DEFAULT_USER_URL);
 
-    if (!resolved.response.ok) {
-      return res.status(resolved.response.status).json({
-        error: resolved.data?.error || `Resolve failed: HTTP ${resolved.response.status}`,
-        debug: resolved.data || resolved.text || null
-      });
-    }
-
-    const user = resolved.data;
+    const { data: user, authMode } = await resolveResource(userUrl, { expectedKinds: ["user"] });
     const userId = user?.id;
 
     if (!userId) {
-      return res.status(500).json({
-        error: "User ID not found in resolve response",
-        debug: user || null
-      });
+      throw new Error("SoundCloud resolve response did not contain a user id");
     }
 
-    const tracksResult = await fetchJsonSafe(
-      `https://api-v2.soundcloud.com/users/${userId}/tracks?client_id=${CLIENT_ID}&limit=200`,
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-          "Accept": "application/json, text/plain, */*",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Origin": "https://soundcloud.com",
-          "Referer": "https://soundcloud.com/",
-          "Sec-Fetch-Site": "same-site",
-          "Sec-Fetch-Mode": "cors",
-          "Sec-Fetch-Dest": "empty"
-        }
-      }
-    );
+    const collectionPath = `/users/${encodeURIComponent(String(userId))}/tracks`;
+    const { items, authMode: collectionAuthMode } = await fetchCollection(collectionPath);
 
-    if (!tracksResult.response.ok) {
-      return res.status(tracksResult.response.status).json({
-        error: tracksResult.data?.error || `Tracks request failed: HTTP ${tracksResult.response.status}`,
-        debug: tracksResult.data || tracksResult.text || null
-      });
-    }
+    const normalizedTracks = items
+      .map(normalizeTrack)
+      .sort((left, right) => right.playback_count - left.playback_count);
 
-    const payload = tracksResult.data;
-    const tracks = Array.isArray(payload?.collection)
-      ? payload.collection
-      : Array.isArray(payload)
-        ? payload
-        : [];
+    const liveTotals = sumTrackTotals(normalizedTracks);
+    const manualTotals = INCLUDE_MANUAL_ADJUSTMENTS
+      ? MANUAL_ADJUSTMENTS.totals
+      : { playback_count: 0, likes: 0, comments: 0, reposts: 0, downloads: 0 };
 
-    const totals = tracks.reduce(
-      (acc, track) => {
-        acc.playback_count += Number(track?.playback_count || 0);
-        acc.likes += Number(track?.likes_count || 0);
-        acc.comments += Number(track?.comment_count || 0);
-        acc.reposts += Number(track?.reposts_count || 0);
-        acc.downloads += Number(track?.download_count || 0);
-        return acc;
-      },
-      {
-        playback_count: 0,
-        likes: 0,
-        comments: 0,
-        reposts: 0,
-        downloads: 0
-      }
-    );
+    const finalTotals = addTotals(liveTotals, manualTotals);
 
-    const finalTotals = {
-      playback_count: totals.playback_count + MANUAL_ADJUSTMENTS.totals.playback_count,
-      likes: totals.likes + MANUAL_ADJUSTMENTS.totals.likes,
-      comments: totals.comments + MANUAL_ADJUSTMENTS.totals.comments,
-      reposts: totals.reposts + MANUAL_ADJUSTMENTS.totals.reposts,
-      downloads: totals.downloads + MANUAL_ADJUSTMENTS.totals.downloads
-    };
+    setCacheHeaders(res, {
+      browserMaxAge: 0,
+      sMaxAge: 300,
+      staleWhileRevalidate: 86400
+    });
 
-    const sortedTracks = tracks
-      .map((track) => ({
-        title: track?.title || "Untitled",
-        playback_count: Number(track?.playback_count || 0),
-        likes_count: Number(track?.likes_count || 0),
-        comment_count: Number(track?.comment_count || 0),
-        reposts_count: Number(track?.reposts_count || 0),
-        download_count: Number(track?.download_count || 0),
-        permalink_url: track?.permalink_url || null,
-        artwork_url: track?.artwork_url || null
-      }))
-      .sort((a, b) => b.playback_count - a.playback_count);
-
-    return res.status(200).json({
+    return sendJson(res, 200, {
       artist: user?.username || "AREKKUZZERA",
-      trackCount: tracks.length,
+      trackCount: normalizedTracks.length,
       sinceYear: 2016,
       trackTitle: `${user?.username || "Artist"} — All Tracks`,
       playback_count: finalTotals.playback_count,
@@ -194,13 +142,22 @@ export default async function handler(req, res) {
       comments: finalTotals.comments,
       reposts: finalTotals.reposts,
       downloads: finalTotals.downloads,
-      history: MANUAL_ADJUSTMENTS.history,
-      tracks: sortedTracks,
-      updatedAt: new Date().toISOString()
+      history: INCLUDE_MANUAL_ADJUSTMENTS
+        ? MANUAL_ADJUSTMENTS.history
+        : { yearly: [], monthly: [], daily: [] },
+      tracks: normalizedTracks,
+      updatedAt: new Date().toISOString(),
+      meta: {
+        apiBaseUrl: getApiBaseUrl(),
+        requestedUserUrl: userUrl,
+        authMode: collectionAuthMode || authMode,
+        manualAdjustmentsApplied: INCLUDE_MANUAL_ADJUSTMENTS,
+        historyIsSynthetic: INCLUDE_MANUAL_ADJUSTMENTS
+      }
     });
   } catch (error) {
-    return res.status(500).json({
-      error: error.message || "Всему пиздец"
-    });
+    logError("dashboard", error);
+    const { status, payload } = toErrorResponse(error);
+    return sendJson(res, status, payload);
   }
 }
