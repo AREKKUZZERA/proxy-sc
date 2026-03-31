@@ -251,7 +251,10 @@ export async function fetchCollection(pathOrUrl) {
 
   for (let page = 0; page < MAX_COLLECTION_PAGES; page += 1) {
     const parsed = await soundCloudFetchJson(nextUrl, {
-      query: page === 0 ? { linked_partitioning: true, limit: PAGE_LIMIT } : {}
+      query: {
+        linked_partitioning: true,
+        ...(page === 0 ? { limit: PAGE_LIMIT } : {})
+      }
     });
 
     authMode ||= parsed.authMode;
