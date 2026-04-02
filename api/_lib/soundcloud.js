@@ -267,17 +267,11 @@ export async function fetchCollection(pathOrUrl) {
     const parsed = await soundCloudFetchJson(nextUrl, {
       query: {
         linked_partitioning: true,
-        ...(page === 0 ? { limit: PAGE_LIMIT } : {})
+        ...(page === 0 ? { limit: Math.min(PAGE_LIMIT, 50) } : {})
       },
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Origin": "https://soundcloud.com",
-        "Referer": "https://soundcloud.com/",
-        "Sec-Fetch-Site": "same-site",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Dest": "empty"
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0"
       }
     });
 
