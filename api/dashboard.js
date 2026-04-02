@@ -101,10 +101,10 @@ export default async function handler(req, res) {
     return null;
   }
 
-  const requestedUrl = getQueryValue(req, "url", "user_url", "userUrl");
-  const userUrl = resolveSoundCloudUrl(requestedUrl, DEFAULT_USER_URL);
-
   try {
+    const requestedUrl = getQueryValue(req, "url", "user_url", "userUrl");
+    const userUrl = resolveSoundCloudUrl(requestedUrl, DEFAULT_USER_URL);
+
     const { data: user, authMode } = await resolveResource(userUrl, { expectedKinds: ["user"] });
     const userId = user?.id;
 
@@ -159,36 +159,9 @@ export default async function handler(req, res) {
     logError("dashboard", error);
 
     if (error?.code === "soundcloud_captcha_blocked") {
-      setCacheHeaders(res, {
-        browserMaxAge: 60,
-        sMaxAge: 120,
-        staleWhileRevalidate: 3600
-      });
-
-      return sendJson(res, 200, {
-        artist: "AREKKUZZERA",
-        trackCount: 0,
-        sinceYear: 2016,
-        trackTitle: "AREKKUZZERA — All Tracks",
-        playback_count: INCLUDE_MANUAL_ADJUSTMENTS ? MANUAL_ADJUSTMENTS.totals.playback_count : 0,
-        likes: INCLUDE_MANUAL_ADJUSTMENTS ? MANUAL_ADJUSTMENTS.totals.likes : 0,
-        comments: INCLUDE_MANUAL_ADJUSTMENTS ? MANUAL_ADJUSTMENTS.totals.comments : 0,
-        reposts: INCLUDE_MANUAL_ADJUSTMENTS ? MANUAL_ADJUSTMENTS.totals.reposts : 0,
-        downloads: INCLUDE_MANUAL_ADJUSTMENTS ? MANUAL_ADJUSTMENTS.totals.downloads : 0,
-        history: INCLUDE_MANUAL_ADJUSTMENTS
-          ? MANUAL_ADJUSTMENTS.history
-          : { yearly: [], monthly: [], daily: [] },
-        tracks: [],
-        updatedAt: new Date().toISOString(),
-        meta: {
-          apiBaseUrl: getApiBaseUrl(),
-          requestedUserUrl: userUrl,
-          authMode: null,
-          manualAdjustmentsApplied: INCLUDE_MANUAL_ADJUSTMENTS,
-          historyIsSynthetic: INCLUDE_MANUAL_ADJUSTMENTS,
-          degraded: true,
-          degradedReason: "soundcloud_captcha_blocked"
-        }
+      return sendJson(res, 503, {
+        error: "SoundCloud temporarily blocked server access with captcha",
+        code: "soundcloud_captcha_blocked"
       });
     }
 
